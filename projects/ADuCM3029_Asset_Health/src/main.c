@@ -59,7 +59,7 @@
 #define CURRENT_DATE_TIME 0 //25 May 2017 12:34 PM
 
 uint8_t ui8Status2, ui8Status;
-bool boInterruptFlag = false;
+bool boInterruptFlag = true;
 uint32_t LowPwrExitFlag;
 
 static bool               gConnected, reg_flag;
@@ -111,9 +111,9 @@ adxl372_init_param adxl372_default_init_param = {
 	ADXL372_WUR_52ms,        // wur
 	ADXL372_LOOPED,        // act_proc_mode
 	ADXL372_INSTANT_ON_LOW_TH,    // th_mode
-	{30, true, true},        // activity_th
+	{3, true, true},        // activity_th
 	{0, false, false},        // activity2_th
-	{30, true, true},        // inactivity_th
+	{3, true, true},        // inactivity_th
 	0,                // activity_time
 	0,                // inactivity_time
 	ADXL372_FILTER_SETTLE_16,    // filter_settle
@@ -224,7 +224,8 @@ int main(int argc, char *argv[])
 	configure_ble_radio();
 
 	while(1) {
-		AppPrintf(".\n\r");
+		static uint8_t cnt;
+		AppPrintf("%u\n\r", cnt);
 		eResult = adi_ble_DispatchEvents(500);
 		DEBUG_RESULT("Error dispatching events to the callback.\r\n", eResult,
 			     ADI_BLER_SUCCESS);
@@ -276,7 +277,45 @@ int main(int argc, char *argv[])
 			adxl372_get_status(adxl372, &status1, &status2, &fifo_entries);
 			adxl372_get_highest_peak_data(adxl372, &max_peak);
 
-			adxl372_get_fifo_xyz_data(adxl372, fifo_samples, fifo_entries);
+			AppPrintf("Status1 0x%x, AWAKE %d, FIFO_OVR %d, FIFO_FULL %d, FIFO_RDY %d",
+					status1,
+					ADXL372_STATUS_1_FIFO_OVR(status1),
+					ADXL372_STATUS_1_FIFO_FULL(status1),
+					ADXL372_STATUS_1_FIFO_RDY(status1)
+					);
+
+#define ADXL372_STATUS_2_ACTIVITY2(x)  (((x) >> 6) & 0x1)
+#define ADXL372_STATUS_2_ACTIVITY(x)   (((x) >> 5) & 0x1)
+#define ADXL372_STATUS_2_INACTIVITY(x) (((x) >> 4) & 0x1)
+
+			AppPrintf("Status2 0x%x, ACTIVITY2 %d, ACTIVITY %d, INACT %d",
+					status2,
+					ADXL372_STATUS_2_ACTIVITY2(status2),
+					ADXL372_STATUS_2_ACTIVITY(status2),
+					ADXL372_STATUS_2_INACTIVITY(status2)
+					);
+
+			if (adxl372_get_fifo_xyz_data(adxl372, fifo_samples, fifo_entries) < 0)
+			{
+				AppPrintf("adxl372_get_fifo_xyz_data failed");
+			}
+			else
+			{
+				AppPrintf("d");
+				int i = 0;
+				for (i = 0; i< fifo_entries; i++)
+				{
+					float x = (float)sign_extend16(fifo_samples[i].x) * 0.1;
+					float y = (float)sign_extend16(fifo_samples[i].y) * 0.1;
+					float z = (float)sign_extend16(fifo_samples[i].z) * 0.1;
+					if ((x+y+z) > 0.001f)
+					{
+						AppPrintf("xyz %f %f %f", x, y, z);
+					}
+				}
+
+
+			}
 
 			/*Print data over UART*/
 			u32RTCTime = CURRENT_DATE_TIME + adi_GetRTCTime();
@@ -322,10 +361,13 @@ int main(int argc, char *argv[])
 		}
 
 		/* Enter Flexi mode - low power */
+// disable low power mode enter
+#if 0
 		if(reg_flag) {
 			adi_pwr_EnterLowPowerMode ( ADI_PWR_MODE_FLEXI,
 						    &LowPwrExitFlag, 0u);
 		}
+#endif
 	}
 }
 
@@ -340,12 +382,9 @@ void send_fifo_data(adxl372_xyz_accel_data *fifo_data, uint16_t data_count)
 #ifndef PEAK_ACCELERATION
 	data_count /= 3;
 	for(int i = 0; i < data_count; i++) {
-		data_pkt_full.Sensor_Data1.fValue =
-			(float)sign_extend16(fifo_data[i].x) * 0.1; //100 mg/LSB
-		data_pkt_full.Sensor_Data2.fValue =
-			(float)sign_extend16(fifo_data[i].y) * 0.1;
-		data_pkt_full.Sensor_Data3.fValue =
-			(float)sign_extend16(fifo_data[i].z) * 0.1;
+		data_pkt_full.Sensor_Data1.fValue = (float)sign_extend16(fifo_data[i].x) * 0.1; //100 mg/LSB
+		data_pkt_full.Sensor_Data2.fValue = (float)sign_extend16(fifo_data[i].y) * 0.1;
+		data_pkt_full.Sensor_Data3.fValue = (float)sign_extend16(fifo_data[i].z) * 0.1;
 		if(data_pkt_full.Sensor_Data1.fValue != 0)
 			adi_radio_DE_SendData(connInfo.nConnHandle,
 					      sizeof(data_pkt_full),(uint8_t*)&data_pkt_full);
