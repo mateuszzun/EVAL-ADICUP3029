@@ -53,7 +53,7 @@
 #include "math.h"
 
 /************************** Variable Definitions ******************************/
-#define PEAK_ACCELERATION
+//#define PEAK_ACCELERATION
 
 #define GENERIC_SENSOR_TYPE 0
 #define CURRENT_DATE_TIME 0 //25 May 2017 12:34 PM
@@ -224,6 +224,7 @@ int main(int argc, char *argv[])
 	configure_ble_radio();
 
 	while(1) {
+		AppPrintf(".\n\r");
 		eResult = adi_ble_DispatchEvents(500);
 		DEBUG_RESULT("Error dispatching events to the callback.\r\n", eResult,
 			     ADI_BLER_SUCCESS);
